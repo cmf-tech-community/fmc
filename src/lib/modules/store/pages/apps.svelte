@@ -182,7 +182,7 @@
     background: var(--color-accent);
     color: var(--color-on-accent);
   }
-  /* the watch draws app icons as discs (see docs/app-icons.md in wp2-apps) — so do we */
+  /* the watch draws app icons as discs (see docs/app-icons.md in cmf-watch-sdk) — so do we */
   .app-icon {
     flex: none;
     width: 3.5rem;

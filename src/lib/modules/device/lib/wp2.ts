@@ -1,4 +1,4 @@
-// What the App Loader firmware (cmf-tech-community/wp2-apps) keeps on the watch, as its stub reports
+// What the App Loader firmware (cmf-tech-community/cmf-watch-sdk) keeps on the watch, as its stub reports
 // it — the stub's own release and the package in each slot — and the checks a package passes
 // before Watch.installPackage sends it (the same ones the stub runs when it lands).
 //

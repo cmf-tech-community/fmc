@@ -96,7 +96,7 @@ export const CMD = {
   otaCommit: C(0xffff, 0x9041),
   otaStatus43: C(0xffff, 0xa043), // terminal, meaning undocumented
   otaStatus44: C(0xffff, 0xa044), // terminal, meaning undocumented
-  // the App Loader stub's install channel (wp2-apps, docs/abi-1.4.md); only INFO is used here
+  // the App Loader stub's install channel (cmf-watch-sdk, docs/abi-1.4.md); only INFO is used here
   stubInfo: C(0xffff, 0x90a0),
   stubInfoRep: C(0xffff, 0xb0a0),
   stubBegin: C(0xffff, 0x90a1),

@@ -774,7 +774,7 @@ export class Watch {
     return { stub, loader, apps };
   }
 
-  // Install a .wp2app into the App Loader — port of wp2-apps install.py: BEGIN (slot, size, CRC of
+  // Install a .wp2app into the App Loader — port of cmf-watch-sdk install.py: BEGIN (slot, size, CRC of
   // the whole file), DATA in 128-byte pieces at the offset the stub has written so far, END (the
   // stub verifies, then swaps the file in). Writes only the App Loader's own files on NAND, never
   // the firmware; a refusal anywhere leaves the old package in place. `state` is a fresh readWp2.
