@@ -45,6 +45,7 @@
     loaderInstallRequested,
     $imageErr: imageErr,
     $firmwareOnWatch: onWatch,
+    $wrongWatch: wrongWatch,
   } = storeModel;
   const {
     $bleInfo: watch,
@@ -137,6 +138,12 @@
             </span>
           </div>
         {/if}
+        {#if $wrongWatch}
+          <p class="err" role="alert">
+            The connected watch is “{$watch?.name ?? "unnamed"}”, and this firmware is for the
+            {deviceName}. It can't be installed on this watch from here — download only.
+          </p>
+        {/if}
         <div class="disclaimer" role="note">
           <Icon name="warning" size={20} />
           <span>
@@ -172,7 +179,7 @@
             <Button
               size="large"
               onClick={() => (loader ? loaderInstallRequested() : flashRequested())}
-              disabled={!fw.image || !$riskAccepted || busy || done}
+              disabled={!fw.image || !$riskAccepted || busy || done || $wrongWatch}
             >
               <Icon name="bolt" size={22} />
               Install

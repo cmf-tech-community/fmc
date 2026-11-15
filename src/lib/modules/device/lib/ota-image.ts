@@ -24,17 +24,19 @@ import { DEFAULT_DEVICE, DEVICES } from "$lib/modules/market/lib/devices";
  * `device` values of devices.ts; a watch missing here has no known board and is never flashed.
  * Read off the stock images: Watch Pro 2 1.0.0.57/1.0.0.73, Watch 3 Pro 1.0.1.77.
  *
- * ponytail: the Watch 3 Pro's advertised name is assumed to be "CMF Watch 3 Pro-XXXX" by
- * analogy with the Watch Pro 2's; nothing flashes it yet, so it only matters for refusing.
- * Check it on a real watch before a second OTA path goes in.
+ * The Watch 3 Pro shows up as both "CMF Watch 3 Pro" and "CMF Watch Pro 3" (analytics.model).
  */
 export const BOARDS: Record<string, { board: string; advertised: RegExp }> = {
   watch_pro_2: { board: "jx402_01_3089c", advertised: /watch pro 2/i },
-  watch_3_pro: { board: "jx402_08", advertised: /watch 3 pro/i },
+  watch_3_pro: { board: "jx402_08", advertised: /watch (3 pro|pro 3)/i },
 };
 /** The one watch the OTA path (Watch.flashFirmware) has ever been run against. */
 export const OTA_DEVICE = "watch_pro_2";
 export const OTA_BOARD = BOARDS[OTA_DEVICE].board;
+
+/** The `device` of a watch by its advertised name, or null when it's none of BOARDS. */
+export const watchDevice = (name: string | null) =>
+  Object.keys(BOARDS).find((d) => BOARDS[d].advertised.test(name ?? "")) ?? null;
 
 const KNOWN_BOARDS = new Set(Object.values(BOARDS).map((b) => b.board));
 const label = (device: string) => DEVICES.find((d) => d.value === device)?.label ?? device;

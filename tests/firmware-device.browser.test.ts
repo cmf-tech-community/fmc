@@ -12,11 +12,14 @@ import { storeModel } from "$lib/modules/store/model";
 import * as storeApi from "$lib/modules/store/model/store.api";
 import { FirmwarePage, FirmwaresPage } from "$lib/modules/store/pages";
 
+// the name the next connection advertises — a test switches it to put another watch on the line
+const advert = vi.hoisted(() => ({ name: "CMF Watch Pro 2-9A9D" }));
+
 vi.mock("$lib/modules/device/lib/ble", async (importOriginal) => {
   class Watch {
     serial = null;
     battery = 80;
-    name = "CMF Watch Pro 2-9A9D";
+    name = advert.name;
     onDials = () => {};
     async connect() {
       return { name: this.name, battery: this.battery, firmware: null, serial: null };
@@ -116,4 +119,41 @@ test("no Installed/Update badge for a stock image or another watch's", () => {
     w3p: null,
     patched: "installed",
   });
+});
+
+test("the page knows when the connected watch isn't the record's", () => {
+  const wrong = (rec: RecordModel | null, name: string | null) =>
+    fork({
+      values: [
+        [storeModel.$firmware, rec],
+        [
+          bleModel.$bleInfo,
+          name === null ? null : { name, battery: 80, firmware: null, serial: null },
+        ],
+      ],
+    }).getState(storeModel.$wrongWatch);
+
+  expect(wrong(wp2Stock, "CMF Watch Pro 2-9A9D")).toBe(false);
+  expect(wrong({ ...wp2Stock, device: "" }, "CMF Watch Pro 2-9A9D")).toBe(false);
+  expect(wrong(w3p, "CMF Watch 3 Pro-1B2C")).toBe(false);
+  expect(wrong(wp2Stock, "CMF Watch Pro 3-1B2C")).toBe(true);
+  expect(wrong(wp2Stock, "CMF Watch 3 Pro-1B2C")).toBe(true);
+  expect(wrong(w3p, "CMF Watch Pro 2-9A9D")).toBe(true);
+  expect(wrong(wp2Stock, "Some Band-0001")).toBe(true);
+  expect(wrong(wp2Stock, null)).toBe(false); // nothing connected: nothing to say yet
+});
+
+// last: it leaves a Watch Pro 3 connected
+test("a Watch Pro 3 on a Watch Pro 2 image: an error, Download only", async () => {
+  advert.name = "CMF Watch Pro 3-1B2C";
+  bleModel.connectRequested();
+  await vi.waitFor(() => expect(bleModel.$bleInfo.getState()?.name).toBe(advert.name));
+  const screen = await render(FirmwarePage, { id: "wp2" });
+
+  await expect
+    .element(screen.getByText(/connected watch is “CMF Watch Pro 3-1B2C”[\s\S]*CMF Watch Pro 2/))
+    .toBeInTheDocument();
+  await screen.getByText("I accept the risk").click();
+  await expect.element(screen.getByRole("button", { name: "Download" })).toBeEnabled();
+  await expect.element(screen.getByRole("button", { name: "Install" })).toBeDisabled();
 });

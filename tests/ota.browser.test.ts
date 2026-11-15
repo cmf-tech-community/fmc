@@ -92,7 +92,7 @@ test("refuses an image for a board no known watch has", () => {
 
 // ---- the board gate: image vs the watch on the line vs the record being flashed ----
 const WP2 = "CMF Watch Pro 2-9A9D";
-const WP3 = "CMF Watch 3 Pro-1B2C";
+const WP3 = "CMF Watch Pro 3-1B2C"; // the Watch 3 Pro also advertises as "CMF Watch 3 Pro"
 const wp2Image = () => buildImage({ board: BOARDS.watch_pro_2.board });
 const wp3Image = () => buildImage({ board: BOARDS.watch_3_pro.board });
 
@@ -109,7 +109,7 @@ test.each([
     wp2Image,
     WP3,
     "watch_pro_2",
-    /“CMF Watch 3 Pro-1B2C” is a CMF Watch 3 Pro \(board "jx402_08"\)/,
+    /“CMF Watch Pro 3-1B2C” is a CMF Watch 3 Pro \(board "jx402_08"\)/,
   ],
   [
     "a watch_3_pro record holding a Watch Pro 2 image",

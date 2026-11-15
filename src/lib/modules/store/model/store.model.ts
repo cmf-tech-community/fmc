@@ -7,7 +7,8 @@ import { combine, createEvent, createStore, sample, type Effect } from "effector
 import { samePackage, type Wp2Package, type Wp2State } from "$lib/modules/device/lib/wp2";
 import type { RecordModel } from "pocketbase";
 import { bleModel } from "$lib/modules/device/model";
-import { flashable, isLoader } from "../lib/firmware";
+import { flashable, isLoader, recordDevice } from "../lib/firmware";
+import { watchDevice } from "$lib/modules/device/lib/ota-image";
 import * as storeApi from "./store.api";
 
 export { appDownloadUrl, firmwareDownloadUrl } from "./store.api";
@@ -128,13 +129,21 @@ sample({
 export const $imageFetching = storeApi.fetchFirmwareImageFx.pending;
 export const $imageErr = createStore("");
 
+/**
+ * The connected watch isn't the one this record is for (a Watch 3 Pro on a Watch Pro 2 image,
+ * or a watch FMC doesn't know): the page says so and Install is off. Download stays.
+ */
+export const $wrongWatch = combine($firmware, bleModel.$bleInfo, (rec, info) =>
+  rec && info ? watchDevice(info.name) !== recordDevice(rec.device) : false,
+);
+
 sample({
   clock: flashRequested,
-  source: { rec: $firmware, accepted: $riskAccepted },
+  source: { rec: $firmware, accepted: $riskAccepted, wrong: $wrongWatch },
   // a loader package isn't an OTA image (the image gate would refuse it anyway), and another
   // watch's image never leaves the page: the board check in ota-image.ts is the second line
-  filter: ({ rec, accepted }) =>
-    Boolean(rec?.image) && !isLoader(rec?.kind) && flashable(rec?.device) && accepted,
+  filter: ({ rec, accepted, wrong }) =>
+    Boolean(rec?.image) && !isLoader(rec?.kind) && flashable(rec?.device) && accepted && !wrong,
   fn: ({ rec }) => ({ rec: rec!, onProgress: imageProgressed }),
   target: storeApi.fetchFirmwareImageFx,
 });
@@ -284,9 +293,9 @@ sample({
 });
 sample({
   clock: loaderInstallRequested,
-  source: { rec: $firmware, accepted: $riskAccepted },
-  filter: ({ rec, accepted }) =>
-    Boolean(rec?.image) && isLoader(rec?.kind) && flashable(rec?.device) && accepted,
+  source: { rec: $firmware, accepted: $riskAccepted, wrong: $wrongWatch },
+  filter: ({ rec, accepted, wrong }) =>
+    Boolean(rec?.image) && isLoader(rec?.kind) && flashable(rec?.device) && accepted && !wrong,
   fn: ({ rec }) => ({ rec: rec!, onProgress: imageProgressed }),
   target: storeApi.fetchLoaderPackageFx,
 });
