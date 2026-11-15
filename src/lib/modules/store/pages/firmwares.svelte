@@ -81,6 +81,7 @@
                 </div>
                 {#if fw.summary}<p class="desc">{fw.summary}</p>{/if}
                 <div class="badges">
+                  {#if !fw.published}<Badge warn>Draft</Badge>{/if}
                   {#if $onWatch[fw.id] === "update"}
                     <Badge>Update</Badge>
                   {:else if $onWatch[fw.id] === "installed"}

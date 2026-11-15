@@ -24,7 +24,9 @@ export interface ImageFetch {
   onProgress: (pct: number) => void;
 }
 const fetchImage = async ({ rec, onProgress }: ImageFetch) => {
-  const res = await fetch(firmwareDownloadUrl(rec));
+  // a draft (published = false, seen only by a moderator, 1754800000_users_moderator.js) has no
+  // download hook — it serves published records only — so its file comes straight, uncounted
+  const res = await fetch(rec.published ? firmwareDownloadUrl(rec) : fileUrl(rec, "image"));
 
   if (!res.ok || !res.body) throw new Error(`couldn't fetch the image (${res.status})`);
   const total = Number(res.headers.get("content-length")) || 0;

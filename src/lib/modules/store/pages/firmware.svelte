@@ -113,6 +113,7 @@
         <h1>{fw.name}</h1>
         {#if fw.summary}<p class="summary">{fw.summary}</p>{/if}
         <div class="badges">
+          {#if !fw.published}<Badge warn>Draft</Badge>{/if}
           <Badge quiet>{kind.label}</Badge>
           {#if testedLabel(fw.tested)}
             <Badge quiet={onHardware} warn={!onHardware}>
