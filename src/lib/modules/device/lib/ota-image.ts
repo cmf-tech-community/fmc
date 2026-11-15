@@ -16,9 +16,28 @@
 // The watch has no signature check, only these CRCs — so a file that passes here is a file the
 // watch will try to install. Everything is little-endian.
 import { crc32 } from "./ble-protocol";
+import { DEFAULT_DEVICE, DEVICES } from "$lib/modules/market/lib/devices";
 
-/** The only board this code has ever been run against. */
-export const OTA_BOARD = "jx402_01_3089c";
+/**
+ * Which board each watch's AOTA images are built for (the string at 0x60), and how the watch
+ * names itself in its advertisement — the only model id a connection has. Keys are the
+ * `device` values of devices.ts; a watch missing here has no known board and is never flashed.
+ * Read off the stock images: Watch Pro 2 1.0.0.57/1.0.0.73, Watch 3 Pro 1.0.1.77.
+ *
+ * ponytail: the Watch 3 Pro's advertised name is assumed to be "CMF Watch 3 Pro-XXXX" by
+ * analogy with the Watch Pro 2's; nothing flashes it yet, so it only matters for refusing.
+ * Check it on a real watch before a second OTA path goes in.
+ */
+export const BOARDS: Record<string, { board: string; advertised: RegExp }> = {
+  watch_pro_2: { board: "jx402_01_3089c", advertised: /watch pro 2/i },
+  watch_3_pro: { board: "jx402_08", advertised: /watch 3 pro/i },
+};
+/** The one watch the OTA path (Watch.flashFirmware) has ever been run against. */
+export const OTA_DEVICE = "watch_pro_2";
+export const OTA_BOARD = BOARDS[OTA_DEVICE].board;
+
+const KNOWN_BOARDS = new Set(Object.values(BOARDS).map((b) => b.board));
+const label = (device: string) => DEVICES.find((d) => d.value === device)?.label ?? device;
 
 const HDR = 0x400;
 const TABLE = 0x200;
@@ -72,7 +91,7 @@ export function inspectOtaImage(d: Uint8Array): OtaImage {
   need(crc32(d.subarray(start, end)) === dv.getUint32(0x18, true), "data checksum");
   const board = ascii(d, 0x60, 28);
 
-  need(board === OTA_BOARD, `built for board "${board}", not ${OTA_BOARD}`);
+  need(KNOWN_BOARDS.has(board), `built for board "${board}", which no known watch has`);
 
   const entries = Array.from({ length: count }, (_, i) => {
     const o = TABLE + i * ENTRY;
@@ -115,7 +134,7 @@ export function inspectOtaImage(d: Uint8Array): OtaImage {
   const tag = (name: string, from = xml) =>
     from.match(new RegExp(`<${name}>\\s*([^<]*?)\\s*</${name}>`))?.[1];
 
-  need(tag("board_name") === OTA_BOARD, "ota.xml names another board");
+  need(tag("board_name") === board, "ota.xml names another board");
   const declared = [...xml.matchAll(/<partition>([\s\S]*?)<\/partition>/g)].map((m) => ({
     name: tag("file_name", m[1]) ?? "",
     size: Number(tag("file_size", m[1])),
@@ -150,4 +169,35 @@ export function inspectOtaImage(d: Uint8Array): OtaImage {
     partitions: partitions.map(({ name, offset, size }) => ({ name, offset, size })),
     size: d.length,
   };
+}
+
+/**
+ * The whole gate before a flash: the image is sound (inspectOtaImage), and its board is the
+ * board of the watch on the line (by its advertised name) and of the record being flashed
+ * (`device`, empty = DEFAULT_DEVICE). Any mismatch, or a watch or record with no known board,
+ * throws before a byte goes out. Then only OTA_DEVICE passes: the protocol is its alone.
+ */
+export function checkOtaTarget(d: Uint8Array, watchName: string | null, device: unknown) {
+  const info = inspectOtaImage(d);
+  const recDevice = String(device || DEFAULT_DEVICE);
+  const rec = BOARDS[recDevice];
+  const name = watchName ?? "an unnamed watch";
+  const watch = Object.entries(BOARDS).find(([, b]) => b.advertised.test(watchName ?? ""));
+
+  if (!rec)
+    throw new Error(`the record is for the ${label(recDevice)}, a watch with no known board`);
+  if (!watch) throw new Error(`“${name}” isn't a watch with a known board — no flashing`);
+  if (info.board !== rec.board)
+    throw new Error(
+      `the image is built for board "${info.board}", but the record is for the ` +
+        `${label(recDevice)} (board "${rec.board}")`,
+    );
+  if (info.board !== watch[1].board)
+    throw new Error(
+      `the image is built for board "${info.board}", but “${name}” is a ` +
+        `${label(watch[0])} (board "${watch[1].board}")`,
+    );
+  if (watch[0] !== OTA_DEVICE)
+    throw new Error(`firmware updates are for the ${label(OTA_DEVICE)} only, this is “${name}”`);
+  return info;
 }

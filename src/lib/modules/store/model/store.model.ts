@@ -139,7 +139,8 @@ sample({
   target: storeApi.fetchFirmwareImageFx,
 });
 sample({
-  clock: storeApi.fetchFirmwareImageFx.doneData,
+  clock: storeApi.fetchFirmwareImageFx.done,
+  fn: ({ params, result }) => ({ image: result, device: params.rec.device }),
   target: bleModel.firmwareFlashRequested,
 });
 sample({

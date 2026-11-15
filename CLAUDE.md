@@ -19,8 +19,10 @@ Apps and firmware are curated: the `apps` and `firmwares` collections are writab
 PocketBase superuser; the frontend lists them, downloads them, and puts them on a watch. Flashing
 a firmware image from its page (`Watch.flashFirmware`, the stock CMF OTA protocol, port of
 cmf-watch-utils `ota_client.py`) waits for the at-your-own-risk tick, and every image passes
-`device/lib/ota-image.ts` (AOTA CRCs, board `jx402_01_3089c`, AGPS trailer) before a byte goes
-out; only a Watch Pro 2 at 50% or more is offered the update. Installing an app or the App Loader
+`device/lib/ota-image.ts` (AOTA CRCs, AGPS trailer, and `checkOtaTarget`: the image's board must be
+the board, in `BOARDS`, of the connected watch by its advertised name and of the record's `device`)
+before a byte goes out; only a Watch Pro 2 at 50% or more is offered the update. `BOARDS` has a twin
+in fmc_pocketbase's `firmware_board.js`, which refuses such an image at upload — change both. Installing an app or the App Loader
 (`Watch.installPackage`: BEGIN/DATA/END to the wp2-apps stub, checked first by `planInstall` in
 `wp2.ts` the way the stub checks it) writes only the App Loader's files, never the firmware. The
 store reads what the watch runs (`Watch.readWp2`: INFO to the stub — a stock watch doesn't

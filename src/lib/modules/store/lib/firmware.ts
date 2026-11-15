@@ -1,6 +1,7 @@
 // What the `kind` and `tested` selects on a firmware record mean to a reader. The keys are the
 // schema's values (1754000000_store.js in fmc_pocketbase) and change together with it.
 import { DEFAULT_DEVICE } from "$lib/modules/market/lib/devices";
+import { OTA_DEVICE } from "$lib/modules/device/lib/ota-image";
 
 export interface FirmwareKind {
   label: string;
@@ -49,6 +50,6 @@ export const testedLabel = (tested: unknown): string =>
  * The one watch FMC can flash: the OTA path (Watch.flashFirmware, ota-image.ts) is the Watch Pro
  * 2's alone. A record that doesn't name a device is for DEFAULT_DEVICE, like a face.
  */
-export const OTA_DEVICE = "watch_pro_2";
+export { OTA_DEVICE } from "$lib/modules/device/lib/ota-image";
 export const recordDevice = (device: unknown): string => String(device || DEFAULT_DEVICE);
 export const flashable = (device: unknown) => recordDevice(device) === OTA_DEVICE;

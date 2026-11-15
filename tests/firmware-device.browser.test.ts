@@ -6,7 +6,7 @@
 import { test, expect, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { RecordModel } from "pocketbase";
-import { allSettled, fork } from "effector";
+import { allSettled, createWatch, fork } from "effector";
 import { bleModel } from "$lib/modules/device/model";
 import { storeModel } from "$lib/modules/store/model";
 import * as storeApi from "$lib/modules/store/model/store.api";
@@ -93,8 +93,14 @@ test("the model fetches a Watch Pro 2 image for flashing, never another watch's"
   await allSettled(storeModel.loaderInstallRequested, { scope: flash({ ...w3p, kind: "loader" }) });
   expect(fetched).toEqual([]);
 
-  await allSettled(storeModel.flashRequested, { scope: flash(wp2Stock) });
+  const scope = flash(wp2Stock);
+  const handed: unknown[] = [];
+
+  createWatch({ unit: bleModel.firmwareFlashRequested, fn: (f) => handed.push(f.device), scope });
+  await allSettled(storeModel.flashRequested, { scope });
   expect(fetched).toEqual(["wp2"]);
+  // the record's device goes along, so the board gate can hold the image to it
+  expect(handed).toEqual(["watch_pro_2"]);
 });
 
 test("no Installed/Update badge for a stock image or another watch's", () => {

@@ -7,7 +7,12 @@
 import { expect, test } from "vitest";
 import { Watch } from "$lib/modules/device/lib/ble";
 import { CMD, Codec, crc32, UUID } from "$lib/modules/device/lib/ble-protocol";
-import { inspectOtaImage, OTA_BOARD } from "$lib/modules/device/lib/ota-image";
+import {
+  BOARDS,
+  checkOtaTarget,
+  inspectOtaImage,
+  OTA_BOARD,
+} from "$lib/modules/device/lib/ota-image";
 
 // ---- a minimal, valid image: ota.xml + TEMP.bin + an AGPS trailer ----
 const le32 = (d: Uint8Array, off: number, v: number) =>
@@ -79,10 +84,71 @@ test.each([
   expect(() => inspectOtaImage(spoil(buildImage()))).toThrow(why);
 });
 
-test("refuses another board's image", () => {
-  expect(() => inspectOtaImage(buildImage({ board: "jx999_01_0000x" }))).toThrow(/board/);
-  // the Watch 3 Pro's stock image: the same AOTA container, another board
-  expect(() => inspectOtaImage(buildImage({ board: "jx402_08" }))).toThrow(/board/);
+test("refuses an image for a board no known watch has", () => {
+  expect(() => inspectOtaImage(buildImage({ board: "jx999_01_0000x" }))).toThrow(
+    /board "jx999_01_0000x", which no known watch has/,
+  );
+});
+
+// ---- the board gate: image vs the watch on the line vs the record being flashed ----
+const WP2 = "CMF Watch Pro 2-9A9D";
+const WP3 = "CMF Watch 3 Pro-1B2C";
+const wp2Image = () => buildImage({ board: BOARDS.watch_pro_2.board });
+const wp3Image = () => buildImage({ board: BOARDS.watch_3_pro.board });
+
+test("a Watch Pro 2 image goes to a Watch Pro 2, from its record or an untagged one", () => {
+  expect(checkOtaTarget(wp2Image(), WP2, "watch_pro_2").board).toBe("jx402_01_3089c");
+  expect(checkOtaTarget(wp2Image(), WP2, "").board).toBe("jx402_01_3089c");
+});
+
+test.each([
+  ["a Watch 3 Pro image on a Watch Pro 2", wp3Image, WP2, "watch_pro_2", /"jx402_08".*Watch Pro 2/],
+  ["a Watch 3 Pro image on an untagged record", wp3Image, WP2, "", /"jx402_08".*Watch Pro 2/],
+  [
+    "a Watch Pro 2 image on a Watch 3 Pro",
+    wp2Image,
+    WP3,
+    "watch_pro_2",
+    /“CMF Watch 3 Pro-1B2C” is a CMF Watch 3 Pro \(board "jx402_08"\)/,
+  ],
+  [
+    "a watch_3_pro record holding a Watch Pro 2 image",
+    wp2Image,
+    WP2,
+    "watch_3_pro",
+    /"jx402_01_3089c".*record is for the CMF Watch 3 Pro \(board "jx402_08"\)/,
+  ],
+  [
+    "a Watch 3 Pro image on a Watch 3 Pro: no OTA path for it",
+    wp3Image,
+    WP3,
+    "watch_3_pro",
+    /Watch Pro 2 only/,
+  ],
+  [
+    "a watch with no known board",
+    wp2Image,
+    "CMF Watch Pro-0001",
+    "watch_pro_2",
+    /“CMF Watch Pro-0001” isn't a watch with a known board/,
+  ],
+  ["a nameless watch", wp2Image, null, "watch_pro_2", /known board/],
+  [
+    "a record for a watch with no known board",
+    wp2Image,
+    WP2,
+    "watch_pro",
+    /CMF Watch Pro, a watch with no known board/,
+  ],
+  [
+    "an unknown board",
+    () => buildImage({ board: "jx999_01_0000x" }),
+    WP2,
+    "watch_pro_2",
+    /jx999_01_0000x/,
+  ],
+] as const)("refuses %s", (_, image, watch, device, why) => {
+  expect(() => checkOtaTarget(image(), watch, device)).toThrow(why);
 });
 
 test("refuses an emulator-only image without the AGPS trailer", () => {
