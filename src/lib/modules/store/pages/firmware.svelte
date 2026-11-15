@@ -12,9 +12,16 @@
   import { StatStrip } from "$lib/shared/components/stat-strip";
   import { fileUrl } from "$lib/shared/api";
   import { compact, day } from "$lib/shared/lib/format";
-  import { deviceLabel } from "$lib/modules/market/lib/devices";
+  import { DEVICES, deviceLabel } from "$lib/modules/market/lib/devices";
   import { bleModel } from "$lib/modules/device/model";
-  import { firmwareKind, isLoader, testedLabel, testedOnHardware } from "../lib/firmware";
+  import {
+    firmwareKind,
+    flashable,
+    isLoader,
+    recordDevice,
+    testedLabel,
+    testedOnHardware,
+  } from "../lib/firmware";
   import { FLASH_LIMITS, WATCH_UTILS_DOCS } from "../lib/links";
   import { storeModel } from "../model";
 
@@ -72,6 +79,10 @@
   const fw = $derived($firmware);
   const kind = $derived(firmwareKind(fw?.kind));
   const onHardware = $derived(testedOnHardware(fw?.tested));
+  const device = $derived(recordDevice(fw?.device));
+  const deviceName = $derived(DEVICES.find((d) => d.value === device)?.label ?? device);
+  // another watch's image: FMC only downloads it, the Install button isn't there to press
+  const ota = $derived(flashable(device));
   const stats = $derived(
     fw
       ? [
@@ -82,8 +93,7 @@
   );
 </script>
 
-<svelte:head><title>{fw?.name ?? "Firmware"} — firmware for the CMF Watch Pro 2</title></svelte:head
->
+<svelte:head><title>{fw?.name ?? "Firmware"} — firmware for the {deviceName}</title></svelte:head>
 
 <Page>
   <div class="detail">
@@ -109,7 +119,7 @@
               {testedLabel(fw.tested)}
             </Badge>
           {/if}
-          {#if deviceLabel(fw.device)}<Badge quiet>{deviceLabel(fw.device)}</Badge>{/if}
+          {#if deviceLabel(device)}<Badge quiet={ota} warn={!ota}>{deviceLabel(device)}</Badge>{/if}
         </div>
       </header>
 
@@ -118,6 +128,15 @@
       <!-- the whole action in one block: the warning, the tick, two buttons, one status line.
            Everything else — preconditions, the description, links — waits in "Details". -->
       <section class="act">
+        {#if !ota}
+          <div class="disclaimer device" role="note">
+            <Icon name="block" size={20} />
+            <span>
+              Only for the {deviceName}. FMC installs firmware on a Watch Pro 2 only, so this one is
+              a download — and flashing it onto a Watch Pro 2 can brick it.
+            </span>
+          </div>
+        {/if}
         <div class="disclaimer" role="note">
           <Icon name="warning" size={20} />
           <span>
@@ -142,7 +161,9 @@
             <Icon name="download" size={22} />
             Download
           </Button>
-          {#if !$watch}
+          {#if !ota}
+            <!-- no Install, no Connect: nothing on this page can send it to a watch -->
+          {:else if !$watch}
             <Button size="large" onClick={() => connectRequested()} disabled={$connecting}>
               <Icon name="bluetooth" size={22} />
               {$connecting ? "Connecting…" : "Connect"}
@@ -201,19 +222,19 @@
       <details class="more">
         <summary>Details</summary>
         <div class="more-body">
-          {#if !loader}
+          {#if loader}
+            <p>
+              It goes into its own slot over Bluetooth — no flashing, the firmware stays as it is.
+              Needs the patched firmware on the watch. The CLI way:
+            </p>
+            <pre><code>wp2apps install loader.wp2app --address &lt;address&gt;</code></pre>
+          {:else if ota}
             <h3>Before you install</h3>
             <ul class="checklist">
               <li>Watch on its charger, at {OTA_MIN_BATTERY}% or more</li>
               <li>Phone's Bluetooth off, so it can't grab the watch mid-update</li>
               <li>This tab open, the computer awake and close by</li>
             </ul>
-          {:else}
-            <p>
-              It goes into its own slot over Bluetooth — no flashing, the firmware stays as it is.
-              Needs the patched firmware on the watch. The CLI way:
-            </p>
-            <pre><code>wp2apps install loader.wp2app --address &lt;address&gt;</code></pre>
           {/if}
           {#if kind.hint || fw.base}
             <p class="hint">
@@ -346,6 +367,10 @@
     :global(.icon) {
       flex: none;
     }
+    /* which watch is the one thing on this plate to read first */
+    &.device {
+      font-weight: 600;
+    }
   }
   .accept {
     display: flex;
@@ -354,9 +379,11 @@
     cursor: pointer;
     font-weight: 500;
   }
+  /* two buttons side by side, or Download alone across the row */
   .buttons {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
     gap: 0.5rem;
   }
   .progress {

@@ -7,7 +7,7 @@ import { combine, createEvent, createStore, sample, type Effect } from "effector
 import { samePackage, type Wp2Package, type Wp2State } from "$lib/modules/device/lib/wp2";
 import type { RecordModel } from "pocketbase";
 import { bleModel } from "$lib/modules/device/model";
-import { isLoader } from "../lib/firmware";
+import { flashable, isLoader } from "../lib/firmware";
 import * as storeApi from "./store.api";
 
 export { appDownloadUrl, firmwareDownloadUrl } from "./store.api";
@@ -131,8 +131,10 @@ export const $imageErr = createStore("");
 sample({
   clock: flashRequested,
   source: { rec: $firmware, accepted: $riskAccepted },
-  // a loader package isn't an OTA image (the image gate would refuse it anyway)
-  filter: ({ rec, accepted }) => Boolean(rec?.image) && !isLoader(rec?.kind) && accepted,
+  // a loader package isn't an OTA image (the image gate would refuse it anyway), and another
+  // watch's image never leaves the page: the board check in ota-image.ts is the second line
+  filter: ({ rec, accepted }) =>
+    Boolean(rec?.image) && !isLoader(rec?.kind) && flashable(rec?.device) && accepted,
   fn: ({ rec }) => ({ rec: rec!, onProgress: imageProgressed }),
   target: storeApi.fetchFirmwareImageFx,
 });
@@ -232,20 +234,22 @@ sample({
 });
 
 // a firmware record against the watch: null when there's nothing to say — no watch, a stock
-// watch, an image without the stub, or an older one than the watch runs. A loader record is
+// watch, another watch's record, an image without the stub (every stock image), or an older one
+// than the watch runs. A loader record is
 // compared by its build (CRC) with the loader in slot L; an image by its `stub` number.
 const stubState = (
   wp2: Wp2State | "stock" | null,
   rec: RecordModel | null,
   loaders: Record<string, Wp2Package>,
 ): OnWatch | null => {
-  if (rec && isLoader(rec.kind)) {
+  if (!rec || !flashable(rec.device)) return null;
+  if (isLoader(rec.kind)) {
     const h = loaders[rec.id];
 
     if (!wp2 || wp2 === "stock" || !h) return null;
     return wp2.loader && samePackage(wp2.loader, h) ? "installed" : "update";
   }
-  const stub = Number(rec?.stub) || 0;
+  const stub = Number(rec.stub) || 0;
 
   if (!wp2 || wp2 === "stock" || !stub) return null;
   if (stub > wp2.stub.version) return "update";
@@ -280,7 +284,8 @@ sample({
 sample({
   clock: loaderInstallRequested,
   source: { rec: $firmware, accepted: $riskAccepted },
-  filter: ({ rec, accepted }) => Boolean(rec?.image) && isLoader(rec?.kind) && accepted,
+  filter: ({ rec, accepted }) =>
+    Boolean(rec?.image) && isLoader(rec?.kind) && flashable(rec?.device) && accepted,
   fn: ({ rec }) => ({ rec: rec!, onProgress: imageProgressed }),
   target: storeApi.fetchLoaderPackageFx,
 });

@@ -81,6 +81,8 @@ test.each([
 
 test("refuses another board's image", () => {
   expect(() => inspectOtaImage(buildImage({ board: "jx999_01_0000x" }))).toThrow(/board/);
+  // the Watch 3 Pro's stock image: the same AOTA container, another board
+  expect(() => inspectOtaImage(buildImage({ board: "jx402_08" }))).toThrow(/board/);
 });
 
 test("refuses an emulator-only image without the AGPS trailer", () => {

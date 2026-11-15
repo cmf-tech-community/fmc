@@ -1,12 +1,20 @@
 <script lang="ts">
-  // The Firmware shelf: OTA images for the Watch Pro 2 — patches, custom builds, rollbacks.
+  // The Firmware shelf: OTA images — patches, custom builds, stock rollbacks. FMC flashes the
+  // Watch Pro 2's; another watch's image is on the shelf for download, its card says whose.
   import { Badge } from "$lib/shared/components/badge";
   import { Icon } from "$lib/shared/components/icon";
   import { Page } from "$lib/shared/components/page";
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { StoreTabs } from "$lib/shared/components/store-tabs";
   import { fileUrl } from "$lib/shared/api";
-  import { firmwareKind, testedLabel, testedOnHardware } from "../lib/firmware";
+  import { deviceLabel } from "$lib/modules/market/lib/devices";
+  import {
+    firmwareKind,
+    flashable,
+    recordDevice,
+    testedLabel,
+    testedOnHardware,
+  } from "../lib/firmware";
   import { FLASH_LIMITS } from "../lib/links";
   import { storeModel } from "../model";
 
@@ -21,7 +29,7 @@
   firmwaresRequested();
 </script>
 
-<svelte:head><title>Custom firmware for the CMF Watch Pro 2 — FMC</title></svelte:head>
+<svelte:head><title>Firmware for CMF watches — FMC</title></svelte:head>
 
 <Page>
   {#snippet header()}
@@ -36,7 +44,7 @@
         <span class="title">Firmware can brick a watch</span>
         <span class="desc">
           These images are unofficial and recovery isn't guaranteed. Read the limits before you
-          flash anything. Flashing from FMC is coming soon.
+          flash anything.
         </span>
       </span>
       <Icon name="open_in_new" size={20} class="go" />
@@ -56,6 +64,7 @@
       {:else}
         {#each $firmwares as fw (fw.id)}
           {@const kind = firmwareKind(fw.kind)}
+          {@const ota = flashable(fw.device)}
           <li>
             <a class="card" href="/firmware/{fw.id}">
               <div class="cover" class:bare={!fw.cover}>
@@ -77,6 +86,7 @@
                   {:else if $onWatch[fw.id] === "installed"}
                     <Badge quiet>Installed</Badge>
                   {/if}
+                  <Badge quiet={ota} warn={!ota}>{deviceLabel(recordDevice(fw.device))}</Badge>
                   <Badge quiet>{kind.label}</Badge>
                   {#if testedLabel(fw.tested)}
                     <Badge quiet={testedOnHardware(fw.tested)} warn={!testedOnHardware(fw.tested)}>
