@@ -1,5 +1,5 @@
-// The simulator offers one input per metric, not per data source — eight ids answer out of
-// `steps` alone. That grouping is only honest while ID_METRIC and idValue agree about which
+// The simulator offers one input per metric, not per data source — several ids answer out of
+// one metric. That grouping is only honest while ID_METRIC and idValue agree about which
 // metric each id reads, and they are two different pieces of code (the map, and the switch's
 // derived cases), so the agreement is asserted rather than assumed.
 import { test, expect } from "vitest";
@@ -63,15 +63,39 @@ test("aliases sit right under the id they duplicate", () => {
   expect(aliasOf(0x70)).toBe(0x0a);
   expect(aliasOf(0x19)).toBeNull();
   expect(SOURCE_IDS.indexOf(0x70)).toBe(SOURCE_IDS.indexOf(0x0a) + 1);
-  // a four-id group: every alias names the first id and follows it in order
-  expect([0x6a, 0x6c, 0x6f].map(aliasOf)).toEqual([0x25, 0x25, 0x25]);
-  const at25 = SOURCE_IDS.indexOf(0x25);
-
-  expect(SOURCE_IDS.slice(at25, at25 + 4)).toEqual([0x25, 0x6a, 0x6c, 0x6f]);
-  expect(aliasIsGuess(0x6a)).toBe(true);
+  expect(aliasOf(0x1e)).toBe(0x1c);
+  expect(SOURCE_IDS.indexOf(0x1e)).toBe(SOURCE_IDS.indexOf(0x1c) + 1);
+  // the goal-% ids each have a metric of their own now (FMC-2), none is an alias
+  expect([0x25, 0x26, 0x27, 0x49, 0x6a, 0x6c, 0x6d, 0x6f].map(aliasOf)).toEqual(
+    Array(8).fill(null),
+  );
+  expect(aliasIsGuess(0x3c)).toBe(true);
   expect(aliasIsGuess(0x16)).toBe(false);
   // the ticking second has a name of its own, not the smooth pair's
   expect(aliasOf(0x12)).toBe(0x0f);
   expect(aliasOf(0x72)).toBeNull();
   expect(SOURCE_IDS.indexOf(0x12)).toBe(SOURCE_IDS.indexOf(0x0f) + 1);
+});
+
+// FMC-2: the "%" ids come back from the firmware already divided, capped at 100, 100 on a 0 goal
+test("goal-% ids read min(100, today * 100 / goal)", () => {
+  const { sim, t } = at("exerciseMin", 15);
+
+  expect(idValue(0x6c, sim, t)).toBe(50); // 15 of the default 30 min
+  expect(idValue(0x6c, { ...sim, exerciseMin: 45 }, t)).toBe(100);
+  expect(idValue(0x6c, { ...sim, exerciseGoal: 0 }, t)).toBe(100);
+  expect(idValue(0x6b, sim, t)).toBe(30);
+  expect(goalOf(0x6c, sim)).toBeUndefined(); // the ring mustn't divide a second time
+});
+
+test("0x82/0x83 read how far through the day / the night it is", () => {
+  const { sim } = at("steps", 0);
+  const sun = { ...sim, sunrise: 8 * 60, sunset: 18 * 60 };
+  const clock = (h: number) => ({ h, m: 0, s: 0, day: 1, wd: 1, mon: 1 });
+
+  expect(idValue(0x82, sun, clock(13))).toBe(50);
+  expect(idValue(0x82, sun, clock(8))).toBe(1); // at least 1 inside the day
+  expect(idValue(0x82, sun, clock(20))).toBe(0);
+  expect(idValue(0x83, sun, clock(20))).toBe(14); // 2 h into a 14 h night
+  expect(idValue(0x83, sun, clock(13))).toBe(0);
 });

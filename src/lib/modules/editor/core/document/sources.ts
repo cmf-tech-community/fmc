@@ -7,8 +7,9 @@ import type { Condition, Doc, Layer } from "./doc";
 // "?" = guess, not confirmed.
 // 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
 // icons: flame/calories, standing figure/stands, lightning/battery, road/distance, cloud-sun/aqi).
-// idValue() feeds each of them from the matching sim field; the unit of 0x1c/0x76/0x8b is a
-// guess (no corpus face binds a live widget to them), tweak per-face via an override.
+// idValue() feeds each of them from the matching sim field; the unit of 0x1c/0x76 is a guess (no
+// corpus face binds a live widget to them), tweak per-face via an override. 0x8b is the plain
+// AQI number, confirmed in the firmware (FMC-2).
 // The time/date half is cross-checked against the protocol repo's §16, whose hand-angle and
 // tens/units ids come from disassembling the firmware getter table
 // (github.com/joshuapassos/CMF-Watch-Pro-2-BLE-Protocol). Ids added from there that no corpus
@@ -51,9 +52,12 @@ export const ID_LABELS: Record<number, string> = {
   0x22: "distance km int",
   0x23: "distance mi int",
   0x24: "battery",
-  0x25: "steps (slot)?",
-  0x26: "steps (slot)",
-  0x27: "calories (slot)?",
+  // 0x25..0x27, 0x49, 0x6a..0x6f, 0x82/0x83: read off the stock firmware's getter table (app.bin
+  // 1.0.0.73, table at 0x101F371C, FMC-2). The "%" ones come back as min(100, today * 100 / goal),
+  // 100 when the goal is 0 — the watch divides, not the face.
+  0x25: "steps %",
+  0x26: "calories %",
+  0x27: "distance %",
   0x30: "battery",
   0x36: "temperature",
   // Tumbler's needle round its BPM ring (11 frames) and InfoHub's ring by the heart — a heart
@@ -65,18 +69,19 @@ export const ID_LABELS: Record<number, string> = {
   0x43: "sleep min",
   0x46: "sleep (ring)",
   0x48: "stand hours",
-  0x49: "steps (slot)",
+  0x49: "stand hours %",
   0x5f: "temperature",
   // Weather forecast high/low: Ring_data and Cirquary print them under ▲ and ▼ by the weather
   // icon, each with its own minus-sign image and a no-data fallback.
   0x60: "temp high",
   0x61: "temp low",
-  0x6a: "steps (slot)?",
-  // slot-menu ids seen in the corpus with nothing to pin them to: a face's picker icons are its
-  // own art and aren't laid out in metric order, so they can't name these
-  0x6d: "slot metric 0x6d ?",
-  0x6c: "steps (slot)?",
-  0x6f: "steps (slot)?",
+  // Combo's three rings are Move / Exercise / Stand: 0x26 outer, 0x6c middle, 0x49 inner.
+  0x6a: "exercise min",
+  0x6b: "exercise goal",
+  0x6c: "exercise %",
+  0x6d: "active hours",
+  0x6e: "active hours goal",
+  0x6f: "active hours %",
   0x70: "hour (hand)",
   // 0x71 reads as the MINUTE hand angle (m·6° + s·0.1°) in the firmware getter table, not a
   // second source — which is what "hands on 0x71 look broken" (see PropsPanel's SECOND_IDS)
@@ -87,9 +92,9 @@ export const ID_LABELS: Record<number, string> = {
   0x74: "distance km frac",
   0x75: "distance mi frac",
   0x76: "distance km (slot)",
-  // Activity_Mood's fan gauge (0x80 ring, max 100). Undocumented anywhere — a goal percentage
-  // by shape, metric unknown, so it reads steps like the other unlabelled slot ids.
-  0x82: "goal % ?",
+  // Activity_Mood's fan gauge: how far through the day (sunrise -> sunset) it is, not a goal.
+  0x82: "daylight %",
+  0x83: "night %",
   // Sunrise/sunset, read off the stock `Default__280__Multifunction` face — the only corpus file
   // that binds them. Each is an hour/minute pair inside one auto-layout group flanking the sun
   // arc (sunrise left at x=41, sunset right at x=377), laid out exactly like the face's own
@@ -103,8 +108,8 @@ export const ID_LABELS: Record<number, string> = {
   0x8b: "aqi",
 };
 
-/** The four sunrise/sunset sources, in the order a face lays them out. */
-export const SUN_IDS = [0x84, 0x85, 0x86, 0x87];
+/** Every source that reads sunrise/sunset: the four times, then daylight/night %. */
+export const SUN_IDS = [0x84, 0x85, 0x86, 0x87, 0x82, 0x83];
 /** Sleep: the hours/minutes pair and the ring gauging the same duration. */
 export const SLEEP_IDS = [0x42, 0x43, 0x46];
 
@@ -133,8 +138,7 @@ export const sourceLabel = (id: number) =>
   ID_LABELS[id] ??
   (isSlotSel(id) ? `slot ${id - SLOT_SEL_ID} selection` : `id 0x${id.toString(16)}`);
 
-// The firmware exposes several ids under one name — two `month`, two `battery`, four
-// `steps (slot)?`. Those are the only entries where the raw id is doing any work, so it's the
+// The firmware exposes several ids under one name — two `month`, two `battery`, two `calories`. Those are the only entries where the raw id is doing any work, so it's the
 // only place a picker shows one. Every id under a name, ascending (integer keys iterate in order).
 const IDS_BY_LABEL: Record<string, number[]> = {};
 
@@ -150,7 +154,7 @@ export const aliasOf = (id: number): number | null => {
   return first === id ? null : first;
 };
 
-/** True when `id`'s name is a guess ("steps (slot)?"), so being an alias of it is one too. */
+/** True when `id`'s name is a guess ("heart rate (gauge)?"), so being an alias of it is one too. */
 export const aliasIsGuess = (id: number) => Boolean(ID_LABELS[id]?.includes("?"));
 
 /** Every known source in picker order: by id, with each alias pulled up under its first id, so
@@ -183,9 +187,14 @@ export interface Sim {
   aqi: SimValue;
   spo2: SimValue; // blood oxygen, % (0x1b)
   stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
+  exerciseMin: SimValue; // minutes of exercise today (0x6a), the firmware's act_strength_time
+  activeHours: SimValue; // hours with >= 100 steps today (0x6d)
   stepsGoal: SimValue;
   calGoal: SimValue;
+  distanceGoal: SimValue; // metres, like distance
   standsGoal: SimValue; // ring denominator for 0x48, the watch's default stand goal is 12 h
+  exerciseGoal: SimValue; // the watch's default is 30 min
+  activeHoursGoal: SimValue; // the watch's default is 12 h
   // Minutes since midnight, feeding the 0x84..0x87 hour/minute pair each. ponytail: two numbers
   // the user types, not a computed almanac — the watch gets these from the phone, and a preview
   // has no location to compute them from. If one is ever wanted, sunrise/sunset from a lat/lon
@@ -248,9 +257,14 @@ export function defaultSim(): Sim {
     aqi: 42,
     spo2: 98,
     stands: 5,
+    exerciseMin: 18,
+    activeHours: 7,
     stepsGoal: 10000,
     calGoal: 500,
+    distanceGoal: 8000,
     standsGoal: 12,
+    exerciseGoal: 30,
+    activeHoursGoal: 12,
     sunrise: 5 * 60 + 41, // the times the stock Multifunction face's own screenshot shows
     sunset: 18 * 60 + 24,
     sleep: 7 * 60 + 36, // ditto, against the watch's own 8-hour default goal
@@ -296,23 +310,24 @@ export type SimMetric =
   | "temp"
   | "aqi"
   | "spo2"
-  | "stands";
+  | "stands"
+  | "exerciseMin"
+  | "activeHours";
 
-/** Which metric each data source reads. The firmware exposes one metric under a pile of ids —
- *  `steps` alone answers eight of them — so this is what lets the simulator offer ONE input per
+/** Which metric each data source reads. The firmware exposes one metric under a pile of ids, so this is what lets the simulator offer ONE input per
  *  metric instead of one per id, and what idValue reads for every source that is a plain
- *  passthrough. The derived ones (distance's km/mi, integer/fraction splits) are listed here for
+ *  passthrough. The derived ones (distance's km/mi, integer/fraction splits, the "%" ids) are listed here for
  *  the panel's sake but still compute their own value in the switch below. */
 export const ID_METRIC: Record<number, SimMetric> = {
   0x19: "steps",
   0x25: "steps",
-  0x26: "steps",
-  0x49: "steps",
-  // unlabelled complication-slot / goal metrics — they behave like a steps goal ring
-  0x6a: "steps",
-  0x6c: "steps",
-  0x6f: "steps",
-  0x82: "steps",
+  0x26: "calories",
+  0x27: "distance",
+  0x49: "stands",
+  0x6a: "exerciseMin",
+  0x6c: "exerciseMin",
+  0x6d: "activeHours",
+  0x6f: "activeHours",
   0x1a: "hr",
   0x1b: "spo2",
   // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
@@ -322,7 +337,6 @@ export const ID_METRIC: Record<number, SimMetric> = {
   0x48: "stands",
   0x1c: "calories",
   0x1e: "calories",
-  0x27: "calories",
   0x36: "temp",
   0x5f: "temp",
   0x60: "temp",
@@ -336,10 +350,41 @@ export const ID_METRIC: Record<number, SimMetric> = {
 };
 
 /** The goal a metric's ring divides by, where it has one. */
-export const METRIC_GOAL: Partial<Record<SimMetric, "stepsGoal" | "calGoal" | "standsGoal">> = {
+export const METRIC_GOAL: Partial<
+  Record<
+    SimMetric,
+    "stepsGoal" | "calGoal" | "distanceGoal" | "standsGoal" | "exerciseGoal" | "activeHoursGoal"
+  >
+> = {
   steps: "stepsGoal",
   calories: "calGoal",
+  distance: "distanceGoal",
   stands: "standsGoal",
+  exerciseMin: "exerciseGoal",
+  activeHours: "activeHoursGoal",
+};
+
+/** The ids the firmware hands back as a percent of the metric's goal. */
+const PERCENT_OF: Record<number, SimMetric> = {
+  0x25: "steps",
+  0x26: "calories",
+  0x27: "distance",
+  0x49: "stands",
+  0x6c: "exerciseMin",
+  0x6f: "activeHours",
+};
+
+// The firmware's own integer math: goal 0 reads as done.
+const percent = (today: number, goal: number) =>
+  goal ? Math.min(100, Math.floor((today * 100) / goal)) : 100;
+
+/** How far `now` is through [from, to) in minutes of the day, wrapping midnight: 0 outside it,
+ *  at least 1 inside — the firmware's 0x82/0x83. */
+const through = (now: number, from: number, to: number) => {
+  const len = (to - from + 1440) % 1440;
+  const at = (now - from + 1440) % 1440;
+
+  return at >= len ? 0 : Math.max(1, Math.floor((at * 100) / len));
 };
 
 const h12 = (h: number) => ((h + 11) % 12) + 1;
@@ -431,7 +476,20 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return sim.sleep % 60;
     case 0x46:
       return sim.sleep;
+    case 0x6b:
+      return Number(sim.exerciseGoal);
+    case 0x6e:
+      return Number(sim.activeHoursGoal);
+    // The firmware falls back to 08:00/18:00 without weather data; the sim's sunrise/sunset stand
+    // in for whatever the phone sent.
+    case 0x82:
+      return through(t.h * 60 + t.m, sim.sunrise, sim.sunset);
+    case 0x83:
+      return through(t.h * 60 + t.m, sim.sunset, sim.sunrise);
     default: {
+      const pct = PERCENT_OF[id];
+
+      if (pct) return percent(Number(sim[pct]), Number(sim[METRIC_GOAL[pct]!]));
       // every source that just hands its metric back, from the one table the panel groups by
       const metric = ID_METRIC[id];
 
@@ -440,21 +498,16 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
   }
 }
 
-/** The goal a percentage-style ring divides by, for the sources that count up instead of to 100. */
+/** The goal a percentage-style ring divides by, for the sources that count up instead of to 100.
+ *  The "%" ids (PERCENT_OF) aren't here: the firmware already divided. */
 export function goalOf(id: number, sim: Sim): SimValue | undefined {
   return {
     0x19: sim.stepsGoal,
-    0x25: sim.stepsGoal,
-    0x26: sim.stepsGoal,
-    0x49: sim.stepsGoal,
-    0x6a: sim.stepsGoal,
-    0x6c: sim.stepsGoal,
-    0x6f: sim.stepsGoal,
-    0x82: sim.stepsGoal,
     0x1c: sim.calGoal,
     0x1e: sim.calGoal,
-    0x27: sim.calGoal,
     0x48: sim.standsGoal,
+    0x6a: sim.exerciseGoal,
+    0x6d: sim.activeHoursGoal,
     0x46: sim.sleepGoal,
   }[id];
 }

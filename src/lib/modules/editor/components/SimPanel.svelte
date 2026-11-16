@@ -16,8 +16,7 @@
   import { editorModel } from "../model";
   const { $sim: sim, $ids: ids, simPatched, overrideSet } = editorModel;
 
-  // One input per METRIC, not per id: the firmware answers eight different ids out of `steps`
-  // alone, so a row each would be eight inputs for one number — and the last one typed would
+  // One input per METRIC, not per id: the firmware answers several ids out of one metric, so a row each would be eight inputs for one number — and the last one typed would
   // silently win. Only the metrics this document actually reads are offered; the raw per-id
   // escape hatch is still there, below, for driving two widgets apart.
   const METRICS: [SimMetric, string, string][] = [
@@ -25,11 +24,13 @@
     ["hr", "Heart rate, bpm", ""],
     ["battery", "Battery, %", ""],
     ["calories", "Calories, kcal", "Calories goal, kcal"],
-    ["distance", "Distance, m", ""],
+    ["distance", "Distance, m", "Distance goal, m"],
     ["temp", "Temperature, °", ""],
     ["aqi", "AQI", ""],
     ["spo2", "Blood oxygen, %", ""],
     ["stands", "Stand hours", "Stand goal, hours"],
+    ["exerciseMin", "Exercise, min", "Exercise goal, min"],
+    ["activeHours", "Active hours", "Active hours goal"],
   ];
 
   // The clock-shaped fields: each feeds an hour source and a minute source (and, for sleep, a

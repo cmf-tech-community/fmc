@@ -77,17 +77,23 @@ placeholder bytes (`(1,0,0)`/`(4,0,0)`), not a meaningful color, at least on fla
 | 0x05/0x06,0x08/09 | hour tens/ones                  | 0x36/0x5f    | temperature               |
 | 0x0c/0x0d         | minute tens/ones                | 0x8b         | AQI                       |
 | 0x10/0x11         | second tens/ones                | 0x73         | 24h/metric-units flag     |
-| 0x13              | AM/PM flag (0/1)                | 0x25-0x27,   | goal % / slot aliases of  |
-| 0x15/0x16         | month (1-12)                    | 0x49,0x6a,   | steps & calories,         |
-| 0x17              | day of month                    | 0x6c,0x6f    | exact metric unconfirmed  |
+| 0x13              | AM/PM flag (0/1)                | 0x25/26/27   | steps/calories/distance % |
+| 0x15/0x16         | month (1-12)                    | 0x49         | stand hours %             |
+| 0x17              | day of month                    | 0x6a/6b/6c   | exercise min/goal/%       |
+|                   |                                 | 0x6d/6e/6f   | active hours/goal/%       |
+|                   |                                 | 0x82/0x83    | daylight % / night %      |
 | 0x18              | weekday (0=Sunday)              | 0x79+slotIdx | synthetic: slot selection |
 | 0x84/0x85         | sunrise hour/minute             | 0x86/0x87    | sunset hour/minute        |
 | 0x42/0x43/0x46    | sleep hours/minutes, ring       | 0x1b         | blood oxygen (SpO2)       |
 
 Reconciled with §16 of the protocol repo (joshuapassos/CMF-Watch-Pro-2-BLE-Protocol), whose
 hand-angle/tens-units ids come from disassembling the firmware getter table; the health labels
-are ours, calibrated against the companion app's slot-menu icons. Unlisted: `0x82`, which drives
-Activity_Mood's fan gauge and is documented nowhere — treated as a goal percentage.
+are ours, calibrated against the companion app's slot-menu icons. The `%` ids and `0x6a..0x6f`,
+`0x82/0x83`, `0x8b` come from the stock firmware's getter table (`app.bin` 1.0.0.73, table at
+`0x101F371C`): a `%` id is `min(100, today * 100 / goal)`, 100 when the goal is 0, so a face
+never divides. `0x82` is how far through sunrise -> sunset now is (0 outside, at least 1
+inside; 08:00/18:00 without weather data), `0x83` the same for the night. Combo's three rings
+are `0x26` / `0x6c` / `0x49`: Move / Exercise / Stand.
 
 `0x84..0x87` come from the one corpus face that binds them, `Default__280__Multifunction`: two
 auto-layout groups flanking its sun arc (`x=41` and `x=377`, both at `y=130`), each built like the
@@ -251,10 +257,9 @@ this `number`'s id, the number renders `round(progressFrac(...) * 100)` **instea
 
 - If the metric has an alias id that reads the same `idValue` — per the table above:
   calories `0x1c`/`0x1e`, battery `0x24`/`0x30` — put the ring on one alias, the number on
-  another. They read identical live data, so they stay in sync. Steps (`0x19`) has no
-  confirmed alias: the editor's simulator feeds `0x25`/`0x26`/`0x49`/`0x6a`/`0x6c`/`0x6f`
-  from steps too, but the table marks those as slot ids whose exact metric is unconfirmed, so
-  check a steps ring+number pair on the watch before relying on it.
+  another. They read identical live data, so they stay in sync. Steps has a ready pair: `0x25`
+  is already steps % (the firmware divides), so a ring on `0x25` and a number on `0x19` both
+  read right; the same holds for `0x6c`/`0x6a` (exercise) and `0x6f`/`0x6d` (active hours).
 - If it doesn't (heart rate `0x1a` has no known alias) — you can't have both a ring driven
   by the real metric AND a number showing its raw value on the same screen. Pick one:
   drop the ring (keep the accurate number) or drop the number (keep the ring, no readout).

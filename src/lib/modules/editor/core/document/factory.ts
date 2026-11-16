@@ -73,7 +73,7 @@ export type LineSource = keyof typeof LINE_SOURCES;
  *  picker (see LINE_SOURCES): a plain image widget picking one of its pre-drawn frames, meta copied
  *  from that face (no w/h). Filling-bar frames on these pickers are unverified on a watch.
  *  ponytail: no goal sources. Across the 100 stock faces every goal-percent id (0x25/0x26/0x46/
- *  0x49/0x6a/0x6c/0x6f/0x82) drives a 0x80/0x81 ring and nothing else — no 0x30 picker and no
+ *  0x49/0x6a/0x6c/0x6f, and 0x82's daylight %) drives a 0x80/0x81 ring and nothing else — no 0x30 picker and no
  *  0x38 bucketed gauge (the tag Energetic/Vintage/Widgets/Tumbler draw battery and heart rate
  *  through, 7..26 frames). A picker on them, and how 0x38 buckets a value, needs a watch. */
 export const newProgressLine = (
@@ -188,12 +188,10 @@ export function newRing(): RingLayer {
   };
 }
 
-/** What a fresh widget slot offers the wearer. Any set works — the list lives in the file, not
- *  the firmware — these are just the four the corpus's own slots lean on. */
 /** Every metric id a stock slot offers, ordered by how often the corpus uses it (100 files, 14
- *  of them with slots, 23 slots). What each one means comes from ID_LABELS; the three that read
- *  as guesses there are guesses here too — the companion-app icons a face ships are its own art
- *  and are NOT laid out in metric order, so they can't be used to name the ids. */
+ *  of them with slots, 23 slots). What each one means comes from ID_LABELS — the companion-app
+ *  icons a face ships are its own art and are NOT laid out in metric order, so they can't name
+ *  the ids; 0x6a/0x6d are named by the firmware's getter table (FMC-2). */
 export const SLOT_METRIC_CHOICES = [0x1c, 0x48, 0x24, 0x19, 0x76, 0x8b, 0x6a, 0x1a, 0x5f, 0x6d];
 /** What a freshly added slot offers — the four the corpus's own slots lean on. */
 export const SLOT_METRICS = [0x19, 0x1a, 0x1c, 0x24]; // steps, heart rate, calories, battery

@@ -104,14 +104,14 @@ const CASES = [
   // need the same gap position to read as concentric. All 3 rings share one center; each ring's
   // own x/y is genuinely absolute (confirmed against a matching ungrouped sibling ring at the
   // same screen position), unlike Elaborate_2's ring (see drawGroup's ringPos) — left alone.
-  // Remaining gap is the ring's fill fraction, which depends on live steps/goal that the
-  // baked preview captured at an unknowable real value (same caveat as the cases above).
+  // The rings are calories % / exercise % / stand hours % (0x26 / 0x6c / 0x49, FMC-2); the bake
+  // shows all three closed, so the sim puts each metric at its default goal.
   // Date is a Tuesday the 9th because that's what the bake shows ("Tue 09").
   {
     name: "Multifunction__366__Combo",
     url: comboUrl,
     time: "2025-12-09T10:09:30",
-    sim: { steps: 10000 },
+    sim: { calories: 500, exerciseMin: 30, stands: 12 },
     maxDiffRatio: 0.02,
   },
   // sim time matches the baked preview's actual capture date/second (found by inspection —
@@ -135,15 +135,15 @@ const CASES = [
   //   frame shared with the unrelated "Battery" label below, landing "%" and "80" on separate
   //   rows. isAuto now only requires x===0; the row's cross-axis position prefers the hugged
   //   NUMBER's own y (see drawGroup's rowCross) over generic frame-centering when it's nonzero.
-  // Remaining diff is the goal ring's own fill fraction (bound to id 0x26, steps-slot, not
-  // calories — a steps-driven ring paired with a calorie number by this file's own design) and
-  // the goal-ring accent color, both the same unknowable-baked-live-value caveat as Combo/
-  // Default above; defaultSim's steps/stepsGoal are asserted, not matched to this device.
+  // The goal ring is 0x26, calories % (FMC-2), beside the calorie number. The device's calorie
+  // goal isn't in the file; calGoal 230 is fitted to the baked ring (156/230 = 68%, which
+  // passes; 200 and 300 don't). What's left is the goal-ring accent color, the same
+  // unknowable-baked-live-value caveat as Combo/Default above.
   {
     name: "Multifunction__304__Elaborate_2",
     url: elaborate2Url,
     time: "2024-07-09T10:12:30",
-    sim: { calories: 156 },
+    sim: { calories: 156, calGoal: 230 },
     maxDiffRatio: 0.02,
   },
   // 8 swipeable metric tiles, same 0x79/0x7a bind-per-slot mechanism as Function, correctly
