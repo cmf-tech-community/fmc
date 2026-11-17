@@ -145,9 +145,9 @@
       {#if $user}
         <Tabs
           items={[
-            { value: "all", label: "All" },
-            { value: "mine", label: "Mine" },
-            { value: "liked", label: "Liked" },
+            { value: "all", label: "All", icon: "public" },
+            { value: "mine", label: "Mine", icon: "person" },
+            { value: "liked", label: "Liked", icon: "favorite" },
           ]}
           value={tab}
           onChange={(v) => goto(v === "all" ? "/" : `/?${v}`, { replaceState: true })}

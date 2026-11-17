@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { Icon } from "../icon";
+
   interface Props {
-    items: { value: string; label: string; disabled?: boolean }[];
+    /** `icon` makes the tab icon-only; the label stays as its accessible name and tooltip */
+    items: { value: string; label: string; icon?: string; disabled?: boolean }[];
     value: string;
     /** Fill the container and split the width evenly, instead of hugging the labels. */
     full?: boolean;
@@ -17,9 +20,16 @@
       aria-selected={item.value === value}
       class:active={item.value === value}
       disabled={item.disabled}
+      class:icon-only={Boolean(item.icon)}
+      aria-label={item.icon ? item.label : undefined}
+      title={item.icon ? item.label : undefined}
       onclick={() => onChange?.(item.value)}
     >
-      {item.label}
+      {#if item.icon}
+        <Icon name={item.icon} size={20} fill={item.value === value} />
+      {:else}
+        {item.label}
+      {/if}
     </button>
   {/each}
 </div>
@@ -58,6 +68,11 @@
     white-space: nowrap;
     text-overflow: ellipsis;
 
+    &.icon-only {
+      display: grid;
+      place-items: center;
+      padding: 0.375rem 0.625rem;
+    }
     &.active {
       background: var(--color-background);
       color: var(--color-text);
