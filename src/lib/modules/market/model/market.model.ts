@@ -103,7 +103,8 @@ export const $items = createStore<RecordModel[]>([]);
 export const $topCreators = combine($items, $likes, (items, likes) => topCreators(items, likes));
 
 interface MarketView {
-  mine: boolean;
+  // which shelf of the root page: "all", "mine" (?mine) or "liked" (?liked)
+  shelf: string;
   scrollTop: number;
   visibleCount: number;
   query: string;
@@ -112,7 +113,7 @@ interface MarketView {
 }
 
 export const $marketView = createStore<MarketView>({
-  mine: false,
+  shelf: "all",
   scrollTop: 0,
   visibleCount: 60,
   query: "",
@@ -141,7 +142,7 @@ sample({
       next.query !== view.query ||
       next.sort !== view.sort ||
       next.device !== view.device ||
-      next.mine !== view.mine
+      next.shelf !== view.shelf
     ) {
       next.visibleCount = 60;
       next.scrollTop = 0;

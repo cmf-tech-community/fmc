@@ -34,11 +34,14 @@
   // one page, two shelves: everyone's published faces, or the signed-in user's own (drafts
   // included). The shelf is in the URL (?mine) so it survives a reload and can be linked.
   const mine = $derived(Boolean($user) && page.url.searchParams.has("mine"));
+  // the faces the signed-in user hearted (?liked): the published catalog narrowed by $likes,
+  // so un-liking a card here drops it from the shelf at once
+  const liked = $derived(Boolean($user) && !mine && page.url.searchParams.has("liked"));
   const uid = $derived($user?.id);
 
   // a third page on the same route: not a shelf of faces but a panel of links (?community)
   const community = $derived(page.url.searchParams.has("community"));
-  const tab = $derived(community ? "community" : mine ? "mine" : "all");
+  const tab = $derived(community ? "community" : mine ? "mine" : liked ? "liked" : "all");
 
   $effect(() => {
     if (mine && uid) myLoadRequested(uid);
@@ -61,6 +64,7 @@
   ];
 
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
+  const likedIds = $derived(new Set($likes.filter((l) => l.user === uid).map((l) => l.watchface)));
 
   const viewQuery = $derived($marketView.query.trim().toLowerCase());
   const inView = (wf: RecordModel) =>
@@ -68,6 +72,7 @@
 
   const shown = $derived(
     (mine ? $myItems : $items.filter((wf) => Boolean(wf.owner)))
+      .filter((wf) => !liked || likedIds.has(wf.id))
       .filter(inView)
       .toSorted((a, b) =>
         $marketView.sort === "popular"
@@ -85,7 +90,10 @@
   const creatorsShown = $derived(
     $topCreators
       .filter((c) => !mine || c.id === $user?.id)
-      .map((c) => ({ ...c, faces: c.faces.filter(inView) }))
+      .map((c) => ({
+        ...c,
+        faces: c.faces.filter((wf) => (!liked || likedIds.has(wf.id)) && inView(wf)),
+      }))
       .filter((c) => c.faces.length),
   );
 
@@ -109,11 +117,11 @@
   });
 
   $effect(() => {
-    const shelf = mine;
+    const shelf = tab;
 
     untrack(() => {
-      if ($marketView.mine === shelf) return;
-      marketViewPatched({ mine: shelf });
+      if ($marketView.shelf === shelf) return;
+      marketViewPatched({ shelf });
     });
   });
 
@@ -129,7 +137,7 @@
 
   <div class="toolbar">
     <!-- the store's sections double as the page title; Community is one of them, so the
-         shelf's own switch is down to All / Mine and only exists for a signed-in user -->
+         shelf's own switch is down to All / Mine / Liked and only exists for a signed-in user -->
     <StoreTabs />
     <!-- search, device and sort filter faces — the links panel has none to filter -->
     {#if !community}
@@ -139,9 +147,10 @@
           items={[
             { value: "all", label: "All" },
             { value: "mine", label: "Mine" },
+            { value: "liked", label: "Liked" },
           ]}
           value={tab}
-          onChange={(v) => goto(v === "mine" ? "/?mine" : "/", { replaceState: true })}
+          onChange={(v) => goto(v === "all" ? "/" : `/?${v}`, { replaceState: true })}
         />
       {/if}
       <div class="filters">
@@ -181,7 +190,9 @@
         showAuthor={!mine}
         empty={mine
           ? "Nothing here yet — create a watchface in the editor and hit Save."
-          : "No community watchfaces yet — publish yours from the editor."}
+          : liked
+            ? "You haven't liked anything yet — tap the heart on a watchface to keep it here."
+            : "No community watchfaces yet — publish yours from the editor."}
         onMore={$marketView.visibleCount < shown.length
           ? () =>
               marketViewPatched({
@@ -230,7 +241,7 @@
     width: 9.5rem;
   }
 
-  /* A phone gets three short rows: the section titles, the search (with All / Mine beside it
+  /* A phone gets three short rows: the section titles, the search (with All / Mine / Liked beside it
      when signed in), then the two filters side by side. */
   @media (max-width: 767px) {
     .toolbar {
