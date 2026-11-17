@@ -35,6 +35,7 @@
     $bleStatus: bleStatus,
     $bleInfo: bleInfo,
     $dials: dials,
+    $slots: slots,
     connectRequested,
     forgetRequested,
     dialRemoved,
@@ -138,7 +139,8 @@
     {#if $dials}
       <div class="section">
         <h2 class="title">
-          Watchfaces on the watch ({$dials.length}/{capacityOf($bleInfo.name)})
+          Watchfaces on the watch ({$slots?.used ?? $dials.length} of {$slots?.capacity ??
+            capacityOf($bleInfo.name)})
         </h2>
         <div class="badges">
           {#each $dials as id, i (id)}

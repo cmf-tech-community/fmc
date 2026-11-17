@@ -58,16 +58,15 @@ export class NoFreeSlotError extends Error {}
 // different physical unit). Recoverable here — the upload is retried as a plain append.
 class StaleSlotError extends Error {}
 
-// How many watchfaces the watch holds — nothing in the protocol reports it. ponytail: taken on
-// report from a CMF Watch Pro 2 (fw 1.0.0.73), NOT measured here. The `finish: 0a` rejections
-// that looked like a full watch turned out to be the signed new_wf_id bug (see below), so the
-// count itself is the only evidence left. If an append ever succeeds with 6 installed, this
-// number is wrong — raise it or drop the gate.
+// How many watchfaces the watch holds. The source is the a055 header (byte 3, see onNotify),
+// which reads 07 on every Pro 2 sample so far; these constants are only the fallback for a
+// connection where no a055, or a malformed one, came in. ponytail: WF_CAPACITY was taken on
+// report from a CMF Watch Pro 2 (fw 1.0.0.73) and the header says 7 there, so 6 is likely one
+// short — kept as the cautious guess, since erring low only opens the slot dialog early.
 export const WF_CAPACITY = 6;
 // ponytail: also taken on report, not measured — a Watch 3 Pro owner on #49 found Nothing X asking
 // to replace a face at the 8th after a factory reset (Album/Video/Studio dials sit outside it).
-// The a055 header's 07 (see onNotify) may be this number reported by the watch itself; read the
-// capacity from there instead once a second sample confirms it.
+// Fallback only, like WF_CAPACITY: the header's own capacity wins when it arrives.
 export const WF_CAPACITY_PRO3 = 7;
 // the advertised name is the only model id there is: "CMF Watch Pro 2-1A2B", "CMF Watch 3 Pro-9A9D"
 // bytes of firmware per 0x9042 frame — the size every hardware flash so far used
@@ -96,9 +95,15 @@ export async function forgetKnownDevices(): Promise<number> {
   return devices.length;
 }
 
+// how full the watch is: `used` counts every dial on it, side-loaded ones included
+export interface WatchSlots {
+  used: number;
+  capacity: number;
+}
+
 export class Watch {
   onStatus: (s: string) => void;
-  onDials: ((d: WatchDials) => void) | null = null;
+  onDials: ((d: WatchDials, slots: WatchSlots) => void) | null = null;
   codec = new Codec();
   chars: Record<string, BluetoothRemoteGATTCharacteristic> = {};
   waiters = new Map<number, (p: Uint8Array) => void>(); // cmd key -> one-shot resolver
@@ -111,9 +116,16 @@ export class Watch {
   battery: number | null = null;
   firmware: string | null = null;
   serial: string | null = null;
-  capacity = WF_CAPACITY; // per model, set once the advertised name is known
+  capacity = WF_CAPACITY; // the model's guess from its name, then the a055 header's
   reportedWf: number[] = []; // dial ids exactly as cmdWfInstalled listed them (§9.5g)
   installedWf: number[] = []; // …plus the side-loaded ones a055 leaves out, see mergeDials
+  // dials on the watch per the a055 header, side-loaded included; null until one arrives, and
+  // then the slot count falls back to installedWf
+  headerCount: number | null = null;
+
+  get slots(): WatchSlots {
+    return { used: this.headerCount ?? this.installedWf.length, capacity: this.capacity };
+  }
 
   constructor(onStatus: (s: string) => void = () => {}) {
     this.onStatus = onStatus;
@@ -134,7 +146,7 @@ export class Watch {
 
     this.installedWf = [...this.reportedWf, ...mine.filter((id) => !this.reportedWf.includes(id))];
     dbg("dials:", this.installedWf, "reported:", this.reportedWf, "flashed here:", mine);
-    this.onDials?.([...this.installedWf]);
+    this.onDials?.([...this.installedWf], this.slots);
   }
 
   // rescue: stop right after auth — a watch wedged on a bad face may never answer fwGet/a055,
@@ -187,6 +199,7 @@ export class Watch {
     this.device = device;
     this.name = device.name ?? null;
     this.capacity = capacityOf(this.name);
+    this.headerCount = null;
 
     (window as unknown as { __wf?: BluetoothDevice }).__wf = device; // ponytail: dev console hook, remove after debugging
     this.status("connecting…");
@@ -392,11 +405,17 @@ export class Watch {
 
         if (id !== 0xffffffff) this.reportedWf.push(id);
       }
-      // Leading 4 bytes, still unparsed. One sample so far: header 01 05 06 07 on a payload of
-      // 28 bytes = 4 + 6 ids, with 6 dials installed — so byte 2 looks like the count and byte 3
-      // (07) is the best candidate for the capacity WF_CAPACITY currently hardcodes. Needs a
-      // second sample at a different count to confirm; keep logging it.
+      // Header: ?? ‖ active dial index (probably) ‖ dials on the watch ‖ capacity. Samples
+      // (watch_health docs/cmf-protocol.md §9.5d-h): 01 00 06 07 with 5 ids listed + 1
+      // side-loaded, 01 06 07 07 with 6 + that one, 01 04 06 07 with 6 after a reset — so byte 2
+      // counts the dials a055 leaves out too, and byte 3 is 7 on a Pro 2. ponytail: no sample
+      // from a watch known to be full yet; the finish-0a → slot dialog path stays the safety
+      // net. Keep logging the raw header so field reports can confirm it.
       dbg("installed dials:", this.reportedWf, "header:", toHex(p.slice(0, 4)));
+      if (p.length >= 4 && p[3] > 0 && p[2] <= p[3]) {
+        this.headerCount = p[2];
+        this.capacity = p[3];
+      }
       this.mergeDials();
     }
     const w = this.waiters.get(res.key);
@@ -483,8 +502,9 @@ export class Watch {
     const oldId = slot ?? (this.installedWf.includes(id) ? id : 0);
 
     // the watch only refuses an append at the very end of the upload, so check the count up
-    // front rather than shipping the whole file over BLE to be told no
-    if (!oldId && this.installedWf.length >= this.capacity)
+    // front rather than shipping the whole file over BLE to be told no — the header's count
+    // when one came, the merged list otherwise (see slots)
+    if (!oldId && this.slots.used >= this.capacity)
       throw new NoFreeSlotError(`all ${this.capacity} slots taken`);
 
     const attempt = async (oldId: number, picked = false) => {
@@ -571,6 +591,8 @@ export class Watch {
               // and this upload has just written over it, so drop its claim or it goes on
               // holding a slot that no longer exists (and keeps showing up in the slot dialog)
               else if (oldId && oldId !== id) unclaimDial(oldId);
+              // no fresh a055 either, so an append bumps the header's count by hand
+              if (!oldId && this.headerCount !== null) this.headerCount++;
               // the new id joins the list through catalog-names, which the caller writes the
               // moment this resolves — it calls mergeDials() again right after
               this.mergeDials();
@@ -635,7 +657,7 @@ export class Watch {
       this.reportedWf = this.reportedWf.filter((x) => x !== oldId);
       unclaimDial(oldId);
       this.mergeDials();
-      if (this.installedWf.length >= this.capacity)
+      if (this.slots.used >= this.capacity)
         throw new NoFreeSlotError(`all ${this.capacity} slots taken`);
       return attempt(0, slot !== undefined);
     });

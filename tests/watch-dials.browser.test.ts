@@ -10,7 +10,7 @@ import {
   WF_CAPACITY,
   WF_CAPACITY_PRO3,
 } from "$lib/modules/device/lib/ble";
-import { CMD, dialId } from "$lib/modules/device/lib/ble-protocol";
+import { CMD, Codec, dialId, UUID } from "$lib/modules/device/lib/ble-protocol";
 import { dialLabel, rememberDial, unclaimDial } from "$lib/modules/device/lib/catalog-names";
 
 const SERIAL = "TESTSERIAL01";
@@ -114,6 +114,84 @@ test("a refused replace of a dial the watch listed keeps it and costs one transf
   await expect(w.uploadWatchface(BIN, 276, "rec1")).rejects.toThrow(/pick a different dial/);
   expect(transfers).toBe(1);
   expect(w.installedWf).toContain(276);
+});
+
+// ---- the a055 header: ?? ‖ active ‖ dials on the watch ‖ capacity ----
+const KEY = new Uint8Array(16).fill(7);
+const u32 = (id: number) => [id & 0xff, (id >> 8) & 0xff, (id >> 16) & 0xff, id >>> 24];
+
+// a watch that announces a055 the way a real one does, through the codec and onNotify
+async function announce(w: Watch, header: number[], ids: number[]) {
+  const peer = new Codec();
+
+  await w.codec.setKey(KEY);
+  await peer.setKey(KEY);
+  const payload = new Uint8Array([...header, ...ids.flatMap(u32)]);
+
+  for (const f of await peer.encode(CMD.wfInstalled, payload)) await w.onNotify(UUID.cmdRead, f);
+}
+// takes every handshake and accepts the finished file; counts the transfers it saw
+const acceptingWatch = (w: Watch) => {
+  const sent = { transfers: 0 };
+
+  w.waitFor = async () => new Uint8Array([1]);
+  w.sendData = async (cmd) => {
+    if (cmd !== CMD.wfInit2Req) return;
+    sent.transfers++;
+    setTimeout(() => w.handlers.get(CMD.wfFinishAck1)?.(new Uint8Array([1])));
+  };
+  return sent;
+};
+
+test("the header's count and capacity are read off a055", async () => {
+  rememberDial(4242, "mine", undefined, SERIAL);
+  const w = watchWith([]);
+  let seen = null;
+
+  w.onDials = (_, slots) => (seen = slots);
+  // §9.5d: five listed, one side-loaded the list leaves out, room for seven
+  await announce(w, [1, 0, 6, 7], [1, 2, 3, 4, 5]);
+  expect(w.reportedWf).toEqual([1, 2, 3, 4, 5]);
+  expect(seen).toEqual({ used: 6, capacity: 7 });
+});
+
+test("a header that says full opens the slot dialog before anything is sent", async () => {
+  const w = watchWith([]);
+  const sent = acceptingWatch(w);
+
+  // seven on the watch, only six listed: the merged list alone would still see room
+  await announce(w, [1, 6, 7, 7], [1, 2, 3, 4, 5, 6]);
+  await expect(w.uploadWatchface(BIN, undefined, "rec1")).rejects.toBeInstanceOf(NoFreeSlotError);
+  expect(sent.transfers).toBe(0);
+});
+
+test("a header with room lets the append through and counts it", async () => {
+  const w = watchWith([]);
+  const sent = acceptingWatch(w);
+
+  await announce(w, [1, 4, 6, 7], [1, 2, 3, 4, 5, 6]); // §9.5h, after a factory reset
+  await w.uploadWatchface(BIN, undefined, "rec1");
+  expect(sent.transfers).toBe(1);
+  expect(w.slots).toEqual({ used: 7, capacity: 7 });
+  // the watch doesn't re-announce a055, so the next append has to hit the dialog on its own
+  await expect(w.uploadWatchface(BIN, undefined, "rec2")).rejects.toBeInstanceOf(NoFreeSlotError);
+});
+
+test("without a header the merged list and the model's guess decide, as before", async () => {
+  rememberDial(4242, "mine", undefined, SERIAL);
+  const w = watchWith([1, 2, 3, 4, 5]); // no a055 seen: 5 listed + ours = WF_CAPACITY
+  const sent = acceptingWatch(w);
+
+  expect(w.slots).toEqual({ used: WF_CAPACITY, capacity: WF_CAPACITY });
+  await expect(w.uploadWatchface(BIN, undefined, "rec1")).rejects.toBeInstanceOf(NoFreeSlotError);
+  expect(sent.transfers).toBe(0);
+});
+
+test("a malformed header is ignored and the fallback stays", async () => {
+  const w = watchWith([]);
+
+  await announce(w, [1, 9, 7, 0], [1, 2]); // capacity 0 — not a reading to trust
+  expect(w.slots).toEqual({ used: 2, capacity: WF_CAPACITY });
 });
 
 test("a Watch 3 Pro gets its own slot count, matched by the advertised name", () => {

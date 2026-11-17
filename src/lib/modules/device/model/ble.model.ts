@@ -1,7 +1,13 @@
 // Web Bluetooth: watch connection and flashing.
 import { createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
-import { NoFreeSlotError, Watch, type WatchDials, type WatchInfo } from "../lib/ble";
+import {
+  NoFreeSlotError,
+  Watch,
+  type WatchDials,
+  type WatchInfo,
+  type WatchSlots,
+} from "../lib/ble";
 import { checkOtaTarget } from "../lib/ota-image";
 import type { Wp2State } from "../lib/wp2";
 import { rememberDial, unclaimDial } from "../lib/catalog-names";
@@ -35,6 +41,8 @@ export const $bleInfo = createStore<WatchInfo | null>(null);
 // installed watchfaces: what a055 reported, plus the ones this browser side-loaded onto this
 // watch — the firmware leaves those out of its own list
 export const $dials = createStore<WatchDials | null>(null);
+// "N of M": the a055 header's count and capacity, or the merged list and the model's guess
+export const $slots = createStore<WatchSlots | null>(null);
 // a flash appends into a free slot; when the watch has none, the file waits here while the
 // user picks which dial to overwrite in the slot dialog
 export const $slotDialogOpen = createStore(false);
@@ -50,6 +58,7 @@ export const $forgetting = bleApi.forgetFx.pending;
 const statusChanged = createEvent<string>();
 const disconnected = createEvent();
 const dialsChanged = createEvent<WatchDials>();
+const slotsChanged = createEvent<WatchSlots>();
 export const connectRequested = createEvent();
 export const flashRequested = createEvent<FlashPayload>();
 export const slotPicked = createEvent<number>();
@@ -85,7 +94,10 @@ const connectFx = createEffect(async () => {
     }
   });
 
-  w.onDials = dialsChanged;
+  w.onDials = (dials, slots) => {
+    dialsChanged(dials);
+    slotsChanged(slots);
+  };
   const info = await w.connect();
 
   watch = w;
@@ -298,7 +310,11 @@ sample({
   clock: dialRemoved,
   target: removeDialFx,
 });
-reset({ clock: disconnected, target: $dials });
+sample({
+  clock: slotsChanged,
+  target: $slots,
+});
+reset({ clock: disconnected, target: [$dials, $slots] });
 
 sample({
   clock: flashFx.failData,
