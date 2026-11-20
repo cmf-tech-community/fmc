@@ -270,11 +270,10 @@ img {
   animation: none;
   z-index: 1;
 }
-::view-transition-old(store-tabs):not(:only-child) {
-  animation: none;
-  opacity: 0;
+::view-transition-old(store-tabs) {
+  display: none;
 }
-::view-transition-new(store-tabs):not(:only-child) {
+::view-transition-new(store-tabs) {
   animation: none;
 }
 @keyframes page-out {
