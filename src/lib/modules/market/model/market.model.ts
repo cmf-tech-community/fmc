@@ -16,6 +16,7 @@ import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
 import type { ImageStore } from "$lib/modules/editor/core/render/canvas";
 import { topCreators } from "../lib/top-creators";
 import * as marketApi from "./market.api";
+import { t } from "../i18n";
 
 export type { SavePayload } from "./market.api";
 
@@ -476,9 +477,9 @@ sample({
 });
 sample({
   clock: [saveDraftRequested, publishRequested],
-  source: $foreignWf,
-  filter: Boolean,
-  fn: () => "this watchface belongs to someone else — export the .bin to start your own from it",
+  source: { foreign: $foreignWf, t },
+  filter: ({ foreign }) => Boolean(foreign),
+  fn: ({ t: tr }) => tr.foreignFace,
   target: editorModel.errored,
 });
 
@@ -495,9 +496,9 @@ sample({
 
 sample({
   clock: saveFx.failData,
-  source: $saveKind,
-  filter: (k) => k === "draft",
-  fn: (_k, e) => `save: ${e.message}`,
+  source: { saveKind: $saveKind, t },
+  filter: ({ saveKind }) => saveKind === "draft",
+  fn: ({ t: tr }, e) => tr.saveFailed(e.message),
   target: editorModel.errored,
 });
 
@@ -550,9 +551,9 @@ sample({
 
 sample({
   clock: saveFx.failData,
-  source: $saveKind,
-  filter: (k) => k === "publish",
-  fn: (_k, e) => `publish: ${e.message}`,
+  source: { saveKind: $saveKind, t },
+  filter: ({ saveKind }) => saveKind === "publish",
+  fn: ({ t: tr }, e) => tr.publishFailed(e.message),
   target: editorModel.errored,
 });
 
